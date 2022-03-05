@@ -17,15 +17,9 @@ db = firebase.database()
 
 
 def stream_handler(message):
-    print(message["event"]) # put
+    #print(message["event"]) # put
     print(message["path"]) # /-K7yGTTEp7O549EzTYtI
     print(message["data"]) # {'title': 'Pyrebase', "body": "etc..."}
-
-my_stream = db.child("Test").stream(stream_handler)
-
-
-all_users = db.child("Test").get()
-print(all_users.val())
-
-while True:
-    pass
+    global flag
+    flag = message["data"]
+my_stream = db.child("Control").stream(stream_handler)
