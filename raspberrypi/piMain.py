@@ -1,8 +1,11 @@
 
 import RPi.GPIO as GPIO
+from grove.adc import ADC
 import time
 import datetime
 import pyrebase
+import dataupload
+import ecg
 
 config = {
   "apiKey": "AIzaSyCD7-h-8fpIZJUqNz_RddVG6bgg9F_BmkM",
@@ -31,14 +34,12 @@ def stream_handler(message):
 
     if type(message["data"]) is dict:
         print("Found initial dict")
-        global wakeup 
+        global wakeup
         wakeup = int(message["data"]["wakeup"])
     else:
         global path_init
         if path_init == None:
             path_init = path
-
-       
 
 
 def stream_handler2(message):
@@ -52,7 +53,7 @@ def stream_handler2(message):
 
     if type(message["data"]) is dict:
         print("Found initial dict")
-        global sleep 
+        global sleep
         sleep = str(message["data"]["SleepyTime"])
     else:
         global path_init
@@ -72,7 +73,7 @@ def stream_handler2(message):
             #wakeup = datetime.datetime.strptime(data, '%H:%M').time()
             #wakeup= time.strftime('%H:%M',time.strptime(data, '%H:%M'))
             #wakeup = int(data)
-        pass 
+        pass
 
 
 
@@ -93,6 +94,11 @@ GPIO.setup(PWM_EN,GPIO.OUT)
 kalm = GPIO.PWM(PWM1,200)
 panik = GPIO.PWM(PWM2,5)
 
+# initialize adc stuff
+ECG_A = 1
+delay = 0.001
+adc = ADC(address=0x08)
+
 kalm.start(0)
 panik.start(0)
 
@@ -107,6 +113,12 @@ def panik_me(dutyCycle):
 
 
 try:
+    ecg_batch = []
+    batch_size = 50000
+    i = 0
+
+    start_time = time.time_ns()
+
     while True:
         now = int(time.strftime("%H%M"))
         print("Alarm: " + str(wakeup) + "          Current: " + str(now))
@@ -117,5 +129,30 @@ try:
         else:
             panik_me(0)
         pass
+
+        i = i + 1
+
+        ecg_reading = adc.read_voltage(ECG_A)
+        ecg_batch.append(ecg_reading)
+
+        if i >=batch_size:
+            end_time = time.time_ns()
+            time_elapsed = end_time - start_time
+
+            # process ECG data
+            rr_arr = ecg.calculate_rr(ecg_batch, time_elapsed/1000000.0)
+            hrv_dict = ecg.get_hrv(rr_arr)
+
+            payload = {
+                "hr": hrv_dict['hr'],
+                "hrv": hrv_dict['hrv']
+            }
+
+            dataupload.upload_data(payload)
+            print("Data saved")
+
+            ecg_batch = []
+            i = 0
+            start_time = time.time_ns()
 except KeyboardInterrupt:
     GPIO.cleanup()
